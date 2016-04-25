@@ -26,7 +26,7 @@ def load_product_urls():
     files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../product-urls'))
     urls = {}
 
-    for fp in files[2:3]:
+    for fp in files:
         # if 'mac' in fp.lower():
         category = fp.split(".")[0]
         urls[category] = []

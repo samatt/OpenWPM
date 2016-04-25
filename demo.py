@@ -8,6 +8,7 @@ sites = ['http://www.example.com',
 
 # Loads the manager preference and 3 copies of the default browser dictionaries
 manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
+# print manager_params
 
 # Update browser configuration (use this for per-browser settings)
 for i in xrange(NUM_BROWSERS):
@@ -15,8 +16,8 @@ for i in xrange(NUM_BROWSERS):
 browser_params[0]['headless'] = True #Launch only browser 0 headless
 
 # Update TaskManager configuration (use this for crawl-wide settings)
-manager_params['data_directory'] = '~/Desktop/'
-manager_params['log_directory'] = '~/Desktop/'
+manager_params['data_directory'] = '~/OpenWPM/'
+manager_params['log_directory'] = '~/OpenWPM/'
 
 # Instantiates the measurement platform
 # Commands time out by default after 60 seconds

@@ -27,7 +27,7 @@ RANDOM_SLEEP_HIGH = 7  # high end (in seconds) for random sleep times between pa
 
 """ ********* AMAZON FUNCTIONS ********* """
 #SM Stuff
-PriceRecord = namedtuple('PriceRecord',['vendor_index' ,'price', 'vendor', 'condition', 'delivery'])
+PriceRecord = namedtuple('PriceRecord',['vendor_index' ,'price', 'vendor', 'condition', 'delivery','shipping'])
 def amazon_signin(webdriver, proxy_queue, browser_params):
     
     user = browser_params["creds_user"]
@@ -53,7 +53,7 @@ def get_price_list(webdriver,product_data,browser_params):
         webdriver.find_element(By.CSS_SELECTOR,"li#olpTabNew").click()
         time.sleep(2)
 
-    product_data = {'prices':[],'vendors':[],'condition':[],'delivery':[],'vendor_index':[]}
+    product_data = {'prices':[],'vendors':[],'condition':[],'delivery':[],'vendor_index':[],'shipping':[]}
     count = 1
     while not webdriver.find_elements(By.CSS_SELECTOR,'li.a-disabled.a-last'):
         print 'clicking next on offers list...'
@@ -61,7 +61,8 @@ def get_price_list(webdriver,product_data,browser_params):
         product_data['condition'] +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
         product_data['delivery'] +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
         # if element.text element.text else element.find_element_by_tag_name('img').get_attribute('alt') for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):    
-        
+        product_data['shipping'] += [ element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"p.olpShippingInfo")]
+
         for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):
             product_data['vendor_index'].append(count)
             count = count + 1
@@ -76,16 +77,25 @@ def get_price_list(webdriver,product_data,browser_params):
     product_data['prices']     +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-large.a-color-price.olpOfferPrice")]
     product_data['condition']  +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
     product_data['delivery']   +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
-    product_data['vendors']    +=  [ element.text if element.text else element.find_element_by_tag_name('img').get_attribute('alt') \
-                                        for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName")]
-    product_data['vendor_index'].append(count)                                            
+    # product_data['vendors']    +=  [ element.text if element.text else element.find_element_by_tag_name('img').get_attribute('alt') \
+    #                                     for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName")]
+    for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):
+        product_data['vendor_index'].append(count)
+        count = count + 1
+        if element.text:
+            product_data['vendors'].append(element.text)
+        else:
+            product_data['vendors'].append(element.find_element_by_tag_name('img').get_attribute('alt'))
+    product_data['shipping'] += [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"p.olpShippingInfo")]
+
     num_items = len(product_data['prices'])
-    pprint(product_data)
+    
     pd = []
     for i in xrange(num_items):
-        p = PriceRecord(product_data['vendor_index'][i],product_data['prices'][i],product_data['vendors'][i],product_data['condition'][i],product_data['delivery'][i])
+        p = PriceRecord(product_data['vendor_index'][i],product_data['prices'][i],product_data['vendors'][i],product_data['condition'][i],product_data['delivery'][i],product_data['shipping'][i])
+        print(p)
         pd.append(p)
-    pprint(pd)
+    
     return pd
 
 
@@ -121,6 +131,7 @@ def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browse
                 # pprint(product_data)
                 dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,True)
             except Exception, e:
+                print "ERROR!"
                 print e
         elif len(mobile) > 0:
             try:
@@ -152,7 +163,7 @@ def dump_amazon_data(product_data,category,webdriver, manager_params,browser_par
     tab_restart_browser(webdriver)  # kills traffic so we can cleanly record data
     sock = clientsocket()
     sock.connect(*manager_params['aggregator_address'])
-    # print 'DUMPING DATA!'
+    print 'DUMPING DATA!'
     # pprint(product_data)
     account = ''
     if 'julia' not in  browser_params["creds_user"]:
