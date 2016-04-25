@@ -9,6 +9,7 @@ from pyvirtualdisplay import Display
 import shutil
 import os
 import random
+import platform
 
 DEFAULT_SCREEN_RES = (1366, 768)  # Default screen res when no preferences are given
 
@@ -120,8 +121,14 @@ def deploy_firefox(status_queue, browser_params, manager_params, crash_recovery)
     configure_firefox.optimize_prefs(fp)
 
     # Launch the webdriver
-    status_queue.put(('STATUS','Launch Attempted',None))
-    fb = FirefoxBinary(root_dir  + "/../../firefox-bin/firefox")
+<<<<<<< HEAD
+    status_queue.put("LAUNCHING BROWSER")
+    #fb = FirefoxBinary(root_dir  + "/../../firefox/firefox", log_file=open(root_dir + '/../../firefox_logging','w'))
+    if platform.system() == "Darwin":
+        fb = FirefoxBinary("/Applications/Firefox.app/Contents/MacOS/firefox")
+    else:
+        fb = FirefoxBinary(root_dir  + "/../../firefox/firefox")
+    # fb = FirefoxBinary("/Users/surya/Code/OpenWPM/Firefox.app/Contents/MacOS/firefox")
     driver = webdriver.Firefox(firefox_profile=fp, firefox_binary=fb)
     status_queue.put(('STATUS','Browser Launched',(int(driver.binary.process.pid), profile_settings)))
 
