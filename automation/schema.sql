@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS productInfo (
     price VARCHAR(500) ,
     vendor VARCHAR(500),
     vendor_index INTEGER,
-    shipping VARCHAR(500),
+    shipping_price VARCHAR(500),
     delivery VARCHAR(500),
     condition VARCHAR(500),
     FOREIGN KEY(crawl_id) REFERENCES crawl(id));

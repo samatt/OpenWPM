@@ -93,7 +93,6 @@ def get_price_list(webdriver,product_data,browser_params):
     pd = []
     for i in xrange(num_items):
         p = PriceRecord(product_data['vendor_index'][i],product_data['prices'][i],product_data['vendors'][i],product_data['condition'][i],product_data['delivery'][i],product_data['shipping'][i])
-        print(p)
         pd.append(p)
     
     return pd
@@ -174,22 +173,12 @@ def dump_amazon_data(product_data,category,webdriver, manager_params,browser_par
     else:
         account = 'prime'
     
-    print "UA STRING : " +  browser_params['ua_string']
     for row in product_data['prices']:
-        query = ("INSERT INTO productInfo (crawl_id,page_url,timestamp,name,account,price,vendor,vendor_index,delivery,condition,category,ua) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", \
-                (browser_params['crawl_id'],product_data['url'], product_data['time'], product_data['name'],account,row.price,row.vendor,row.vendor_index,row.delivery,row.condition,\
+        query = ("INSERT INTO productInfo (crawl_id,page_url,timestamp,name,account,price,vendor,vendor_index,delivery,shipping_price,condition,category,ua) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", \
+                (browser_params['crawl_id'],product_data['url'], product_data['time'], product_data['name'],account,row.price,row.vendor,row.vendor_index,row.delivery,row.shipping,row.condition,\
                         category,browser_params['ua']))
         sock.send(query)
-    
     sock.close()
-
-# if multi_vendor:
-#     query = ("INSERT INTO productInfo (crawl_id,page_url,timestamp,name,prices,account,vendors,category,ua) VALUES (?,?,?,?,?,?,?,?,?)", \
-#             (browser_params['crawl_id'],product_data['url'], product_data['time'], product_data['name']," , ".join(product_data['prices']),\
-#                 account," , ".join(product_data['vendors']),category,browser_params['ua']))
-#     sock.send(query)
-#     sock.close()
-# else:
 
 """ ********* DEFAULT FUNCTIONS ********* """
 
