@@ -1,7 +1,7 @@
 from Commands import command_executor
 from DeployBrowsers import deploy_browser
 from Commands import profile_commands
-from Proxy import deploy_mitm_proxy
+#from Proxy import deploy_mitm_proxy
 from SocketInterface import clientsocket
 from MPLogger import loggingclient
 from Errors import ProfileLoadError, BrowserConfigError, BrowserCrashError

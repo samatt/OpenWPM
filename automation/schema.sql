@@ -108,3 +108,19 @@ CREATE TABLE IF NOT EXISTS CrawlHistory (
     bool_success INTEGER,
     dtg DATETIME DEFAULT (CURRENT_TIMESTAMP),
     FOREIGN KEY(crawl_id) REFERENCES crawl(id));
+
+CREATE TABLE IF NOT EXISTS productInfo (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crawl_id INTEGER NOT NULL,
+    page_url VARCHAR(500) NOT NULL,
+    name TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    account TEXT,
+    ua TEXT,
+    category TEXT,
+    price VARCHAR(500) ,
+    vendor VARCHAR(500),
+    vendor_index INTEGER,
+    delivery VARCHAR(500),
+    condition VARCHAR(500),
+    FOREIGN KEY(crawl_id) REFERENCES crawl(id));

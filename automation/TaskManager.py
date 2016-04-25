@@ -21,6 +21,43 @@ import psutil
 SLEEP_CONS = 0.1  # command sleep constant (in seconds)
 BROWSER_MEMORY_LIMIT = 1500 # in MB
 
+def load_product_urls():
+    path = os.path.join(os.path.dirname(__file__) ,'../product-urls')
+    files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../product-urls'))
+    urls = {}
+
+    for fp in files[2:3]:
+        # if 'mac' in fp.lower():
+        category = fp.split(".")[0]
+        urls[category] = []
+        with open(path+"/"+fp) as data_file:    
+            data = json.load(data_file)
+            urls[category] = data.values()
+
+    return urls
+def load_amazon_params(num_browsers=1):
+    files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../browser_settings'))
+    # print files
+    browser_params = []
+    for f in files[:1]:
+        if '.DS_Store' not in f:
+
+            fp = open(os.path.join(os.path.dirname(__file__), '../browser_settings/%s'%f))
+            print fp
+            preferences = json.load(fp)
+            
+            # deepcopy is temporary
+            browser_params.append(preferences)
+            fp.close()
+    fp = open(os.path.join(os.path.dirname(__file__), 'default_manager_params.json'))
+    manager_params = json.load(fp)
+    fp.close()
+    manager_params['num_browsers'] = num_browsers
+
+    return manager_params, browser_params
+    # return browser_params
+
+
 def load_default_params(num_browsers=1):
     """
     Loads num_browsers copies of the default browser_params dictionary.
@@ -466,6 +503,12 @@ class TaskManager:
 
     def extract_links(self, index=None, timeout=30):
         self._distribute_command(('EXTRACT_LINKS',), index, timeout)
+    
+    def sign_in(self,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('SIGN_IN'), index, overwrite_timeout,reset)
+
+    def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
 
     def close(self, post_process=True):
         """

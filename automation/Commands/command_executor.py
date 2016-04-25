@@ -33,3 +33,9 @@ def execute_command(command, webdriver, proxy_queue, browser_settings, browser_p
 
     if command[0] == 'EXTRACT_LINKS':
         browser_commands.extract_links(webdriver, browser_params, manager_params)
+    
+    if command[0] == 'SIGN_IN':
+        browser_commands.amazon_signin(webdriver, proxy_queue, browser_params)
+    
+    if command[0] == 'GET_PRICES':
+        browser_commands.amazon_get_prices(command[1], command[2], webdriver, proxy_queue,manager_params, browser_params)

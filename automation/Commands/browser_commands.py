@@ -4,6 +4,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import MoveTargetOutOfBoundsException
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
+#SM imports
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.common.by import By
+from datetime import datetime
+from pprint import pprint
+from  collections import namedtuple
 import random
 import time
 
@@ -19,6 +25,162 @@ NUM_MOUSE_MOVES = 10  # number of times to randomly move the mouse as part of bo
 RANDOM_SLEEP_LOW = 1  # low end (in seconds) for random sleep times between page loads (bot mitigation)
 RANDOM_SLEEP_HIGH = 7  # high end (in seconds) for random sleep times between page loads (bot mitigation)
 
+""" ********* AMAZON FUNCTIONS ********* """
+#SM Stuff
+PriceRecord = namedtuple('PriceRecord',['vendor_index' ,'price', 'vendor', 'condition', 'delivery'])
+def amazon_signin(webdriver, proxy_queue, browser_params):
+    
+    user = browser_params["creds_user"]
+    password = browser_params["creds_password"]
+    sign_in_url="http://www.amazon.com/ap/signin?_encoding=UTF8&openid.assoc_handle=usflex&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.mode=checkid_setup&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&openid.ns.pape=http%3A%2F%2Fspecs.openid.net%2Fextensions%2Fpape%2F1.0&openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2Fref%3Dnav_signin"
+    
+    #sign in
+    # def get_website(url, sleep, webdriver, proxy_queue, browser_params, extension_socket):
+    get_website(sign_in_url,2, webdriver, proxy_queue, browser_params,None)
+    email = webdriver.find_element(By.CSS_SELECTOR, "#ap_email").send_keys(user)
+    password = webdriver.find_element(By.CSS_SELECTOR, "#ap_password").send_keys(password)
+    webdriver.find_element_by_id("signInSubmit-input").click()
+    print ("Signed in with %s"%user)
+
+def get_price_list(webdriver,product_data,browser_params):
+    """
+    CSS Selectors:
+    Prices  : span.a-size-large.a-color-price.olpOfferPrice-text-bold 
+    Vendors : p.a-spacing-small.olpSellerName
+    Delivery: div.a-column.a-span3.olpDeliveryColumn 
+    """
+    if  len(webdriver.find_elements(By.CSS_SELECTOR,"li#olpTabNew")) > 0:
+        webdriver.find_element(By.CSS_SELECTOR,"li#olpTabNew").click()
+        time.sleep(2)
+
+    product_data = {'prices':[],'vendors':[],'condition':[],'delivery':[],'vendor_index':[]}
+    count = 1
+    while not webdriver.find_elements(By.CSS_SELECTOR,'li.a-disabled.a-last'):
+        print 'clicking next on offers list...'
+        product_data['prices'] +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-large.a-color-price.olpOfferPrice")]
+        product_data['condition'] +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
+        product_data['delivery'] +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
+        # if element.text element.text else element.find_element_by_tag_name('img').get_attribute('alt') for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):    
+        
+        for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):
+            product_data['vendor_index'].append(count)
+            count = count + 1
+            if element.text:
+                product_data['vendors'].append(element.text)
+            else:
+                product_data['vendors'].append(element.find_element_by_tag_name('img').get_attribute('alt'))
+        webdriver.find_element(By.CSS_SELECTOR,"li.a-last").click()
+        time.sleep(2)
+
+    #we are done with pagination. Capture last page
+    product_data['prices']     +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-large.a-color-price.olpOfferPrice")]
+    product_data['condition']  +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
+    product_data['delivery']   +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
+    product_data['vendors']    +=  [ element.text if element.text else element.find_element_by_tag_name('img').get_attribute('alt') \
+                                        for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName")]
+    product_data['vendor_index'].append(count)                                            
+    num_items = len(product_data['prices'])
+    pprint(product_data)
+    pd = []
+    for i in xrange(num_items):
+        p = PriceRecord(product_data['vendor_index'][i],product_data['prices'][i],product_data['vendors'][i],product_data['condition'][i],product_data['delivery'][i])
+        pd.append(p)
+    pprint(pd)
+    return pd
+
+
+def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browser_params):    
+    # for debug
+    # url = "http://www.amazon.com/Apple-iPhone-8GB-Black-Verizon/dp/B0074R0Z3O/ref=sr_1_cc_1?s=aps&ie=UTF8&qid=1429812402&sr=1-1-catcorr&keywords=Apple+iPhone+4+8GB+%28Black%29+-+Verizon" 
+
+    product_data = {}
+    try:
+        # webdriver.get(url)
+        
+        get_website(url, 2,webdriver, proxy_queue, browser_params,None)
+
+        print webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
+        # get product name
+        product_data['url'] = url
+        product_data['name'] = webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
+        product_data['time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        desktop = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"span.olp-padding-right > a") if "new" in element.text]
+        mobile = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"div#olp > a") if "new" or "New" in element.text]
+        # print desktop
+        # print mobile
+        # pprint(product_data)
+        # print ("Got product %s"%product_data['name']) 
+        # if more than one vendor get list of vendor prices
+        if len(desktop) > 0:
+            try:
+                desktop[0].click()
+                time.sleep(2)
+                product_data['prices'] = get_price_list(webdriver,product_data,browser_params)
+                #store data
+                # pprint(product_data)
+                dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,True)
+            except Exception, e:
+                print e
+        elif len(mobile) > 0:
+            try:
+                print "MOBILE"
+                mobile[0].click()
+                time.sleep(2)
+                product_data = get_price_list(webdriver,product_data,browser_params)
+                #store data
+                dump_amazon_data(product_data,category,webdriver,manager_params,browser_params,True)
+            except Exception, e:
+                print e
+        else:        
+            try:
+                if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_dealprice")) > 0:
+                    product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_dealprice").text
+                
+                if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_ourprice")) > 0:
+                    product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_ourprice").text
+                product_data['vendors']  = "(default)"
+                dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,False)
+            except Exception, e:
+                print e
+    except Exception, e:
+        print e
+
+
+def dump_amazon_data(product_data,category,webdriver, manager_params,browser_params, multi_vendor):
+    
+    tab_restart_browser(webdriver)  # kills traffic so we can cleanly record data
+    sock = clientsocket()
+    sock.connect(*manager_params['aggregator_address'])
+    # print 'DUMPING DATA!'
+    # pprint(product_data)
+    account = ''
+    if 'julia' not in  browser_params["creds_user"]:
+        if 'mike' in browser_params["creds_user"]:
+            account = 'mike'
+        else:
+            account = 'jeff'
+    else:
+        account = 'prime'
+    
+    print "UA STRING : " +  browser_params['ua_string']
+    for row in product_data['prices']:
+        query = ("INSERT INTO productInfo (crawl_id,page_url,timestamp,name,account,price,vendor,vendor_index,delivery,condition,category,ua) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", \
+                (browser_params['crawl_id'],product_data['url'], product_data['time'], product_data['name'],account,row.price,row.vendor,row.vendor_index,row.delivery,row.condition,\
+                        category,browser_params['ua']))
+        sock.send(query)
+    
+    sock.close()
+
+# if multi_vendor:
+#     query = ("INSERT INTO productInfo (crawl_id,page_url,timestamp,name,prices,account,vendors,category,ua) VALUES (?,?,?,?,?,?,?,?,?)", \
+#             (browser_params['crawl_id'],product_data['url'], product_data['time'], product_data['name']," , ".join(product_data['prices']),\
+#                 account," , ".join(product_data['vendors']),category,browser_params['ua']))
+#     sock.send(query)
+#     sock.close()
+# else:
+
+""" ********* DEFAULT FUNCTIONS ********* """
 
 def bot_mitigation(webdriver):
     """ performs three optional commands for bot-detection mitigation when getting a site """
