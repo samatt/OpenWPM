@@ -5,10 +5,10 @@ var pageManager = require("./page-manager.js");
 
 exports.run = function(crawlID) {
 
-    // Set up logging
+    // Set up tables
     var createJavascriptTable = data.load("create_javascript_table.sql");
     loggingDB.executeSQL(createJavascriptTable, false);
-    
+
     // Inject content script to instrument JavaScript API
     pageMod.PageMod({
         include: "*",
@@ -16,15 +16,18 @@ exports.run = function(crawlID) {
         contentScriptFile: data.url("./content.js"),
         onAttach: function onAttach(worker) {
             var url = worker.url;
-            worker.port.on("instrumentation", function(data) {
+            function processCallsAndValues(data) {
                 var update = {};
                 update["crawl_id"] = crawlID;
-                update["url"] = loggingDB.escapeString(url);
+                update["script_url"] = loggingDB.escapeString(data.scriptUrl);
+                update["script_line"] = loggingDB.escapeString(data.scriptLine);
+                update["script_col"] = loggingDB.escapeString(data.scriptCol);
+                update["call_stack"] = loggingDB.escapeString(data.callStack);
                 update["symbol"] = loggingDB.escapeString(data.symbol);
                 update["operation"] = loggingDB.escapeString(data.operation);
                 update["value"] = loggingDB.escapeString(data.value);
-		
-                if (data.operation == 'call') {
+
+                if (data.operation == 'call' && data.args.length > 0) {
                     for(var i = 0; i < data.args.length; i++) {
                         update["parameter_index"] = i;
                         update["parameter_value"] = loggingDB.escapeString(data.args[i]);
@@ -33,8 +36,9 @@ exports.run = function(crawlID) {
                 } else {
                     loggingDB.executeSQL(loggingDB.createInsert("javascript", update), true);
                 }
-            });
+            }
+            worker.port.on("logCall", function(data){processCallsAndValues(data)});
+            worker.port.on("logValue", function(data){processCallsAndValues(data)});
         }
     });
-    
 };

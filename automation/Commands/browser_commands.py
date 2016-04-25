@@ -8,6 +8,7 @@ import random
 import time
 
 from ..SocketInterface import clientsocket
+from ..MPLogger import loggingclient
 from utils.lso import get_flash_cookies
 from utils.firefox_profile import get_cookies  # todo: add back get_localStorage,
 from utils.webdriver_extensions import scroll_down, wait_until_loaded, get_intra_links
@@ -67,7 +68,7 @@ def tab_restart_browser(webdriver):
     time.sleep(0.5)
 
 
-def get_website(url, webdriver, proxy_queue, browser_params, extension_socket):
+def get_website(url, sleep, webdriver, proxy_queue, browser_params, extension_socket):
     """
     goes to <url> using the given <webdriver> instance
     <proxy_queue> is queue for sending the proxy the current first party site
@@ -84,13 +85,16 @@ def get_website(url, webdriver, proxy_queue, browser_params, extension_socket):
             time.sleep(0.001)
     if extension_socket is not None:
         extension_socket.send(url)
-    
+
     # Execute a get through selenium
     try:
         webdriver.get(url)
     except TimeoutException:
         pass
-    
+
+    # Sleep after get returns
+    time.sleep(sleep)
+
     # Close modal dialog if exists
     try:
         WebDriverWait(webdriver, .5).until(EC.alert_is_present())
@@ -112,12 +116,12 @@ def get_website(url, webdriver, proxy_queue, browser_params, extension_socket):
     if browser_params['bot_mitigation']:
         bot_mitigation(webdriver)
 
-def extract_links(webdriver, browser_params):
+def extract_links(webdriver, browser_params, manager_params):
     link_elements = webdriver.find_elements_by_tag_name('a')
     link_urls = set(element.get_attribute("href") for element in link_elements)
 
     sock = clientsocket()
-    sock.connect(*browser_params['aggregator_address'])
+    sock.connect(*manager_params['aggregator_address'])
     create_table_query = ("""
     CREATE TABLE IF NOT EXISTS links_found (
       found_on TEXT,
@@ -137,7 +141,8 @@ def extract_links(webdriver, browser_params):
 
     sock.close()
 
-def browse_website(url, num_links, webdriver, proxy_queue, browser_params):
+def browse_website(url, num_links, sleep, webdriver, proxy_queue,
+                   browser_params, manager_params, extension_socket):
     """
     calls get_website before visiting <num_links> present on the page
     NOTE: top_url will NOT be properly labeled for requests to subpages
@@ -145,7 +150,10 @@ def browse_website(url, num_links, webdriver, proxy_queue, browser_params):
           to this function.
     """
     # First get the site
-    get_website(url, webdriver, proxy_queue, browser_params)
+    get_website(url, sleep, webdriver, proxy_queue, browser_params, extension_socket)
+
+    # Connect to logger
+    logger = loggingclient(*manager_params['logger_address'])
 
     # Then visit a few subpages
     for i in range(num_links):
@@ -154,27 +162,29 @@ def browse_website(url, num_links, webdriver, proxy_queue, browser_params):
         if len(links) == 0:
             break
         r = int(random.random()*len(links)-1)
-        print "BROWSE: visiting link to %s" % links[r].get_attribute("href")
-        
+        logger.info("BROWSER %i: visiting internal link %s" % (browser_params['crawl_id'], links[r].get_attribute("href")))
+
         try:
             links[r].click()
             wait_until_loaded(webdriver, 300)
-            time.sleep(1)
+            time.sleep(max(1,sleep))
             if browser_params['bot_mitigation']:
                 bot_mitigation(webdriver)
             webdriver.back()
         except Exception, e:
             pass
 
-def dump_storage_vectors(top_url, start_time, webdriver, browser_params):
-    """ Grab the newly changed items in supported storage vectors """
+def dump_flash_cookies(top_url, start_time, webdriver, browser_params, manager_params):
+    """ Save newly changed Flash LSOs to database
 
+    We determine which LSOs to save by the `start_time` timestamp.
+    This timestamp should be taken prior to calling the `get` for
+    which creates these changes.
+    """
     # Set up a connection to DataAggregator
     tab_restart_browser(webdriver)  # kills traffic so we can cleanly record data
     sock = clientsocket()
-    sock.connect(*browser_params['aggregator_address'])
-
-    # Wait for SQLite Checkpointing - never happens when browser open
+    sock.connect(*manager_params['aggregator_address'])
 
     # Flash cookies
     flash_cookies = get_flash_cookies(start_time)
@@ -185,6 +195,25 @@ def dump_storage_vectors(top_url, start_time, webdriver, browser_params):
                                                           cookie.key, cookie.content))
         sock.send(query)
 
+    # Close connection to db
+    sock.close()
+
+def dump_profile_cookies(top_url, start_time, webdriver, browser_params, manager_params):
+    """ Save changes to Firefox's cookies.sqlite to database
+
+    We determine which cookies to save by the `start_time` timestamp.
+    This timestamp should be taken prior to calling the `get` for
+    which creates these changes.
+
+    Note that the extension's cookieInstrument is preferred to this approach,
+    as this is likely to miss changes still present in the sqlite `wal` files.
+    This will likely be removed in a future version.
+    """
+    # Set up a connection to DataAggregator
+    tab_restart_browser(webdriver)  # kills traffic so we can cleanly record data
+    sock = clientsocket()
+    sock.connect(*manager_params['aggregator_address'])
+
     # Cookies
     rows = get_cookies(browser_params['profile_path'], start_time)
     if rows is not None:
@@ -193,14 +222,6 @@ def dump_storage_vectors(top_url, start_time, webdriver, browser_params):
                       host, path, expiry, accessed, creationTime, isSecure, isHttpOnly) \
                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (browser_params['crawl_id'], top_url) + row)
             sock.send(query)
-    
-    # localStorage - TODO this doesn't have a modified time support
-    #rows = get_localStorage(profile_dir, start_time)
-    #if rows is not None:
-    #    for row in rows:
-    #        query = ("INSERT INTO localStorage (crawl_id, page_url, scope, KEY, value) \
-    #                  VALUES (?,?,?,?)",(crawl_id, top_url) + row)
-    #        sock.send(query)
 
     # Close connection to db
     sock.close()

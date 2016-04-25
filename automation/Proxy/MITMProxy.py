@@ -5,6 +5,7 @@ import mitm_commands
 from libmproxy import controller
 import Queue
 import sys
+import traceback
 
 
 class InterceptingMaster (controller.Master):
@@ -16,10 +17,11 @@ class InterceptingMaster (controller.Master):
     Inspired by the following example. Note the gist has a lot of bugs.
     https://gist.github.com/dannvix/5285924
     """
-    
-    def __init__(self, server, crawl_id, url_queue, db_socket_address, logger_address):
-        self.crawl_id = crawl_id
-        
+
+    def __init__(self, server, url_queue, browser_params, manager_params, status_queue):
+        self.browser_params = browser_params
+        self.manager_params = manager_params
+
         # Attributes used to flag the first-party domain
         self.url_queue = url_queue  # first-party domain provided by BrowserManager
         self.prev_top_url, self.curr_top_url = None, None  # previous and current top level domains
@@ -27,10 +29,19 @@ class InterceptingMaster (controller.Master):
 
         # Open a socket to communicate with DataAggregator
         self.db_socket = clientsocket()
-        self.db_socket.connect(*db_socket_address)
+        self.db_socket.connect(*manager_params['aggregator_address'])
+
+        # Open a socket to communicate with LevelDBAggregator
+        self.ldb_socket = None
+        if browser_params['save_javascript']:
+            self.ldb_socket = clientsocket()
+            self.ldb_socket.connect(*manager_params['ldb_address'])
 
         # Open a socket to communicate with MPLogger
-        self.logger = loggingclient(*logger_address)
+        self.logger = loggingclient(*manager_params['logger_address'])
+
+        # Store status_queue for communication back to TaskManager
+        self.status_queue = status_queue
 
         controller.Master.__init__(self, server)
 
@@ -65,8 +76,10 @@ class InterceptingMaster (controller.Master):
             print 'KeyboardInterrupt received. Shutting down'
             self.shutdown()
             sys.exit(0)
-        except Exception as ex:
-            self.logger.critical('BROWSER %i: Exception. Shutting down proxy!\n%s' % (self.crawl_id, str(ex)))
+        except Exception:
+            excp = traceback.format_exception(*sys.exc_info())
+            self.logger.critical('BROWSER %i: Exception. Shutting down proxy!\n%s' % (self.browser_params['crawl_id'], excp))
+            self.status_queue.put(('FAILED', None))
             self.shutdown()
             raise
 
@@ -74,7 +87,10 @@ class InterceptingMaster (controller.Master):
         """ Receives HTTP request, and sends it to logging function """
         msg.reply()
         self.curr_requests.add(msg.request)
-        mitm_commands.process_general_mitm_request(self.db_socket, self.crawl_id, self.curr_top_url, msg)
+        mitm_commands.process_general_mitm_request(self.db_socket,
+                                                   self.browser_params,
+                                                   self.curr_top_url,
+                                                   msg)
 
     # Record data from HTTP responses
     def handle_response(self, msg):
@@ -90,5 +106,8 @@ class InterceptingMaster (controller.Master):
             self.curr_requests.remove(msg.request)
         else:  # ignore responses for which we cannot match the request
             return
-
-        mitm_commands.process_general_mitm_response(self.db_socket, self.crawl_id, top_url, msg)
+        mitm_commands.process_general_mitm_response(self.db_socket,
+                                                    self.ldb_socket,
+                                                    self.logger,
+                                                    self.browser_params,
+                                                    top_url, msg)
