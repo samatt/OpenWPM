@@ -8,8 +8,11 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.by import By
 from datetime import datetime
-from pprint import pprint
 from  collections import namedtuple
+
+from ..AmazonRunner import AmazonRunner
+from pprint import pprint
+
 import random
 import time
 
@@ -27,7 +30,7 @@ RANDOM_SLEEP_HIGH = 7  # high end (in seconds) for random sleep times between pa
 
 """ ********* AMAZON FUNCTIONS ********* """
 #SM Stuff
-PriceRecord = namedtuple('PriceRecord',['vendor_index' ,'price', 'vendor', 'condition', 'delivery','shipping'])
+# PriceRecord = namedtuple('PriceRecord',['vendor_index' ,'price', 'vendor', 'condition', 'delivery','shipping'])
 def amazon_signin(webdriver, proxy_queue, browser_params):
     
     user = browser_params["creds_user"]
@@ -42,7 +45,22 @@ def amazon_signin(webdriver, proxy_queue, browser_params):
     webdriver.find_element_by_id("signInSubmit-input").click()
     print ("Signed in with %s"%user)
 
-def get_price_list(webdriver,product_data,browser_params):
+# def get_checkout_price(webdriver,browser_params):
+    # pass
+    # add to cart
+    # proceed to checkout
+    # ship to this address
+    # continue
+    # continue
+    # div#subtotals-marketplace-table
+
+    #option 1
+    # a href="https://www.amazon.com/ref=ox_spc_footer_homepage"
+    # a href="/gp/cart/view.html/ref=nav_crt_ewc_hd"
+    # input value="Delete"
+    # a a-link-normal sc-product-link
+
+def get_price_list(webdriver,browser_params):
     """
     CSS Selectors:
     Prices  : span.a-size-large.a-color-price.olpOfferPrice-text-bold 
@@ -60,7 +78,6 @@ def get_price_list(webdriver,product_data,browser_params):
         product_data['prices'] +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-large.a-color-price.olpOfferPrice")]
         product_data['condition'] +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
         product_data['delivery'] +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
-        # if element.text element.text else element.find_element_by_tag_name('img').get_attribute('alt') for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):    
         product_data['shipping'] += [ element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"p.olpShippingInfo")]
 
         for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):
@@ -77,8 +94,8 @@ def get_price_list(webdriver,product_data,browser_params):
     product_data['prices']     +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-large.a-color-price.olpOfferPrice")]
     product_data['condition']  +=  [element.text for element in webdriver.find_elements(By.CSS_SELECTOR,"span.a-size-medium.olpCondition.a-text-bold")]
     product_data['delivery']   +=  [element.text.split('\n')[0] for element in webdriver.find_elements(By.CSS_SELECTOR,"div.a-column.a-span3.olpDeliveryColumn")]
-    # product_data['vendors']    +=  [ element.text if element.text else element.find_element_by_tag_name('img').get_attribute('alt') \
-    #                                     for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName")]
+    product_data['vendors']    +=  [ element.text if element.text else element.find_element_by_tag_name('img').get_attribute('alt') \
+                                        for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName")]
     for element in webdriver.find_elements(By.CSS_SELECTOR,"h3.a-spacing-none.olpSellerName"):
         product_data['vendor_index'].append(count)
         count = count + 1
@@ -94,7 +111,6 @@ def get_price_list(webdriver,product_data,browser_params):
     for i in xrange(num_items):
         p = PriceRecord(product_data['vendor_index'][i],product_data['prices'][i],product_data['vendors'][i],product_data['condition'][i],product_data['delivery'][i],product_data['shipping'][i])
         pd.append(p)
-    
     return pd
 
 
@@ -107,52 +123,75 @@ def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browse
         # webdriver.get(url)
         
         get_website(url, 2,webdriver, proxy_queue, browser_params,None)
+        amazon = AmazonRunner(webdriver, url, manager_params, browser_params )
+        amazon.get_product_name()
+        print amazon.product_data['name']
+        if amazon.nav_to_offers():
+            print 'Navigated to offers'
+            amazon.get_all_offers()
+            # product_data['prices'] = get_price_list(webdriver,browser_params)
+            # print "Adding ",len(amazon.parsed_rows)," rows"
+            dump_amazon_data(amazon.product_data,category,webdriver, manager_params,browser_params,True)
+        else:
+            print 'Couldnt reach offers'
 
-        print webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
-        # get product name
-        product_data['url'] = url
-        product_data['name'] = webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
-        product_data['time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+## Not as Old
+        # webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
+        # # get product name
+        # product_data['url'] = url
+        # product_data['name'] = webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
+        # product_data['time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        desktop = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"span.olp-padding-right > a") if "new" in element.text]
-        mobile = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"div#olp > a") if "new" or "New" in element.text]
-        # print desktop
-        # print mobile
-        # pprint(product_data)
-        # print ("Got product %s"%product_data['name']) 
-        # if more than one vendor get list of vendor prices
-        if len(desktop) > 0:
-            try:
-                desktop[0].click()
-                time.sleep(2)
-                product_data['prices'] = get_price_list(webdriver,product_data,browser_params)
-                #store data
-                # pprint(product_data)
-                dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,True)
-            except Exception, e:
-                print "ERROR!"
-                print e
-        elif len(mobile) > 0:
-            try:
-                print "MOBILE"
-                mobile[0].click()
-                time.sleep(2)
-                product_data = get_price_list(webdriver,product_data,browser_params)
-                #store data
-                dump_amazon_data(product_data,category,webdriver,manager_params,browser_params,True)
-            except Exception, e:
-                print e
-        else:        
-            try:
-                if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_dealprice")) > 0:
-                    product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_dealprice").text
+        # desktop = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"span.olp-padding-right > a") if "new" in element.text]
+        # mobile = [element for element in webdriver.find_elements(By.CSS_SELECTOR,"div#olp > a") if "new" or "New" in element.text]
+        # # print desktop
+        # # print mobile
+        # # pprint(product_data)
+        # # print ("Got product %s"%product_data['name']) 
+        # # if more than one vendor get list of vendor prices
+        # if desktop :
+        #     desktop[0].click()
+        # elif len(mobile) > 0:
+        #     mobile[0].click()
+        #     try:
+        #         product_data['prices'] = get_price_list(webdriver,product_data,browser_params)
+        #         dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,True)
+        #     except Exception, e:
+        #         print "ERROR!"
+        #         print e        
+
+
+
+##OLD
+        # if desktop :
+        #     try:
+        #         desktop[0].click()
+        #         time.sleep(2)
+        #         product_data['prices'] = get_price_list(webdriver,product_data,browser_params)
+        #         dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,True)
+        #     except Exception, e:
+        #         print "ERROR!"
+        #         print e
+        # elif len(mobile) > 0:
+        #     try:
+        #         print "MOBILE"
+        #         mobile[0].click()
+        #         time.sleep(2)
+        #         product_data = get_price_list(webdriver,product_data,browser_params)
+        #         dump_amazon_data(product_data,category,webdriver,manager_params,browser_params,True)
+        #     except Exception, e:
+        #         print e
+        # # else:        
+        # #     try:
+        # #         if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_dealprice")) > 0:
+        # #             product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_dealprice").text
                 
-                if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_ourprice")) > 0:
-                    product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_ourprice").text
-                product_data['vendors']  = "(default)"
-                dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,False)
-            except Exception, e:
-                print e
+        # #         if len(webdriver.find_elements(By.CSS_SELECTOR,"span#priceblock_ourprice")) > 0:
+        # #             product_data['prices'] =  webdriver.find_element(By.CSS_SELECTOR,"span#priceblock_ourprice").text
+        # #         product_data['vendors']  = "(default)"
+        # #         dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,False)
+        # #     except Exception, e:
+        # #         print e
     except Exception, e:
         print e
 
