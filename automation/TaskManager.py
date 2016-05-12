@@ -27,7 +27,6 @@ def load_product_urls():
     urls = {}
 
     for fp in files:
-        # if 'mac' in fp.lower():
         category = fp.split(".")[0]
         urls[category] = []
         with open(path+"/"+fp) as data_file:    

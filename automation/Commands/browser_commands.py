@@ -5,16 +5,16 @@ from selenium.common.exceptions import MoveTargetOutOfBoundsException
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 #SM imports
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.common.by import By
-from datetime import datetime
-from  collections import namedtuple
-
-from ..AmazonRunner import AmazonRunner
+# from selenium.webdriver.support.ui import Select
+# from selenium.webdriver.common.by import By
+# from datetime import datetime
+# from  collections import namedtuple
 from pprint import pprint
-
+import sys,os
 import random
 import time
+from ..AmazonRunner import AmazonRunner
+
 
 from ..SocketInterface import clientsocket
 from ..MPLogger import loggingclient
@@ -122,19 +122,31 @@ def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browse
     try:
         # webdriver.get(url)
         
-        get_website(url, 2,webdriver, proxy_queue, browser_params,None)
+        get_website(url, 3,webdriver, proxy_queue, browser_params,None)
         amazon = AmazonRunner(webdriver, url, manager_params, browser_params )
         amazon.get_product_name()
         print amazon.product_data['name']
         if amazon.nav_to_offers():
             print 'Navigated to offers'
-            amazon.get_all_offers()
-            # product_data['prices'] = get_price_list(webdriver,browser_params)
-            # print "Adding ",len(amazon.parsed_rows)," rows"
-            dump_amazon_data(amazon.product_data,category,webdriver, manager_params,browser_params,True)
+            offers = amazon.get_all_offers()
+            for_check_out = amazon.get_products_for_check_out(offers)
+            pprint(for_check_out)
+
+            # amazon.get_add_to_cart()
+            # print 'get website again'
+            # get_website(url, 2,webdriver, proxy_queue, browser_params,None)
+            # if amazon.nav_to_offers():
+            #     print amazon.get_offer_details()
+            # dump_amazon_data(amazon.product_data,category,webdriver, manager_params,browser_params,True)
         else:
             print 'Couldnt reach offers'
-
+    except Exception, e:
+        print 'got an exception!'
+        exc_type, exc_obj, exc_tb = sys.exc_info()
+        if exc_tb:
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+        print e
 ## Not as Old
         # webdriver.find_element(By.CSS_SELECTOR,'[data-feature-name="title"]').text
         # # get product name
@@ -192,8 +204,7 @@ def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browse
         # #         dump_amazon_data(product_data,category,webdriver, manager_params,browser_params,False)
         # #     except Exception, e:
         # #         print e
-    except Exception, e:
-        print e
+
 
 
 def dump_amazon_data(product_data,category,webdriver, manager_params,browser_params, multi_vendor):
