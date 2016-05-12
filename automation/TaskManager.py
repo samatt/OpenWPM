@@ -408,7 +408,6 @@ class TaskManager:
 
     def _start_thread(self, browser, command_sequence, condition=None):
         """  starts the command execution thread """
-
         # Check status flags before starting thread
         if self.closing:
             self.logger.error("Attempted to execute command on a closed TaskManager")
@@ -446,7 +445,7 @@ class TaskManager:
                            # cookies can be properly tracked.
         for command_and_timeout in command_sequence.commands_with_timeout:
             command, timeout = command_and_timeout
-            if command[0] in ['GET', 'BROWSE']:
+            if command[0] in ['GET', 'BROWSE','SIGN_IN','GET_PRICES']:
                 start_time = time.time()
                 command += (browser.curr_visit_id,)
             elif command[0] in ['DUMP_FLASH_COOKIES', 'DUMP_PROFILE_COOKIES']:
@@ -527,26 +526,18 @@ class TaskManager:
         command_sequence.reset = reset
         self.execute_command_sequence(command_sequence, index=index)
 
-    # def dump_flash_cookies(self, url, start_time, index=None, timeout=60):
-    #     """ dumps all Flash LSOs to db """
-    #     self._distribute_command(('DUMP_FLASH_COOKIES', url, start_time), index, timeout)
+    def sign_in(self, index = None, timeout = 120, reset=False):
+        amazon_url ="http://www.amazon.com/ap/signin?_encoding=UTF8&openid.assoc_handle=usflex&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.mode=checkid_setup&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&openid.ns.pape=http%3A%2F%2Fspecs.openid.net%2Fextensions%2Fpape%2F1.0&openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2Fref%3Dnav_signin"
+        command_sequence = CommandSequence.CommandSequence(amazon_url)
+        command_sequence.amazon_sign_in(timeout=timeout)
+        command_sequence.reset = reset
+        self.execute_command_sequence(command_sequence, index=index)
 
-    # def dump_profile_cookies(self, url, start_time, index=None, timeout=60):
-    #     """ dumps changes to Firefox's cookies.sqlite to db """
-    #     self._distribute_command(('DUMP_PROFILE_COOKIES', url, start_time), index, timeout)
-
-    # def dump_profile(self, dump_folder, close_webdriver=False, compress=True, index=None, timeout=120):
-    #     """ dumps from the profile path to a given file (absolute path) """
-    #     self._distribute_command(('DUMP_PROF', dump_folder, close_webdriver, compress), index, timeout)
-
-    # def extract_links(self, index=None, timeout=30):
-    #     self._distribute_command(('EXTRACT_LINKS',), index, timeout)
-    
-    def sign_in(self,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('SIGN_IN'), index, overwrite_timeout,reset)
-
-    def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
+    def get_prices(self, url,category,index = None, timeout = 240, reset=False):
+        command_sequence = CommandSequence.CommandSequence(url)
+        command_sequence.amazon_get_all_prices(category,timeout=timeout)
+        command_sequence.reset = reset
+        self.execute_command_sequence(command_sequence, index=index)
 
 
     def close(self, post_process=True):

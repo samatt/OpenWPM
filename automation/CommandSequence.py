@@ -69,3 +69,13 @@ class CommandSequence:
                                         "the dump storage vectors command", self)
         command = ('EXTRACT_LINKS',)
         self.commands_with_timeout.append((command, timeout))
+    
+    def amazon_sign_in(self,timeout=60):
+        self.total_timeout += timeout
+        command = ('SIGN_IN',self.url)
+        self.commands_with_timeout.append((command, timeout))
+
+    def amazon_get_all_prices(self,category,timeout=60):
+        self.total_timeout += timeout
+        command = (('GET_PRICES',self.url,category))
+        self.commands_with_timeout.append((command, timeout))
