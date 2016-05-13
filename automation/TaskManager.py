@@ -4,7 +4,6 @@ from SocketInterface import clientsocket
 from PostProcessing import post_processing
 from Errors import CommandExecutionError
 from platform_utils import get_version, get_configuration_string
-import CommandSequence
 import MPLogger
 
 from multiprocessing import Process, Queue
@@ -82,6 +81,7 @@ class TaskManager:
         - DataAggregator to aggregate data in a SQLite database
         - MPLogger to aggregate logs across processes
         - BrowserManager processes to isolate Browsers in a separate process
+
     <manager_params> dict of TaskManager configuration parameters
     <browser_params> is a list of (or a single) dictionaries that specify preferences for browsers to instantiate
     <process_watchdog> will monitor firefox and Xvfb processes, killing any not indexed in TaskManager's browser list.
@@ -146,14 +146,6 @@ class TaskManager:
         self.sock.connect(*self.manager_params['aggregator_address'])
 
         self._save_configuration(browser_params)
-
-        # read the last used site visit id
-        cur = self.db.cursor()
-        cur.execute("SELECT MAX(visit_id) from site_visits")
-        last_visit_id = cur.fetchone()[0]
-        if last_visit_id is None:
-            last_visit_id = 0
-        self.next_visit_id = last_visit_id + 1
 
         # sets up the BrowserManager(s) + associated queues
         self.browsers = self._initialize_browsers(browser_params)  # List of the Browser(s)
@@ -349,7 +341,7 @@ class TaskManager:
 
     # CRAWLER COMMAND CODE
 
-    def _distribute_command(self, command_sequence, index=None):
+    def _distribute_command(self, command, index=None, timeout=None, reset=False):
         """
         parses command type and issues command(s) to the proper browser
         <index> specifies the type of command this is:
@@ -364,8 +356,8 @@ class TaskManager:
             while True:
                 for browser in self.browsers:
                     if browser.ready():
-                        browser.current_timeout = command_sequence.total_timeout
-                        self._start_thread(browser, command_sequence)
+                        browser.current_timeout = timeout
+                        self._start_thread(browser, command, reset)
                         command_executed = True
                         break
                 if command_executed:
@@ -376,8 +368,8 @@ class TaskManager:
             #send the command to this specific browser
             while True:
                 if self.browsers[index].ready():
-                    self.browsers[index].current_timeout = command_sequence.total_timeout
-                    self._start_thread(self.browsers[index], command_sequence)
+                    self.browsers[index].current_timeout = timeout
+                    self._start_thread(self.browsers[index], command, reset)
                     break
                 time.sleep(SLEEP_CONS)
         elif index == '*':
@@ -386,8 +378,8 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = command_sequence.total_timeout
-                        self._start_thread(self.browsers[i], command_sequence)
+                        self.browsers[i].current_timeout = timeout
+                        self._start_thread(self.browsers[i], command, reset)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
         elif index == '**':
@@ -397,8 +389,8 @@ class TaskManager:
             while False in command_executed:
                 for i in xrange(len(self.browsers)):
                     if self.browsers[i].ready() and not command_executed[i]:
-                        self.browsers[i].current_timeout = command_sequence.total_timeout
-                        self._start_thread(self.browsers[i], command_sequence, condition)
+                        self.browsers[i].current_timeout = timeout
+                        self._start_thread(self.browsers[i], command, reset, condition)
                         command_executed[i] = True
                 time.sleep(SLEEP_CONS)
             with condition:
@@ -406,7 +398,7 @@ class TaskManager:
         else:
             self.logger.info("Command index type is not supported or out of range")
 
-    def _start_thread(self, browser, command_sequence, condition=None):
+    def _start_thread(self, browser, command, reset, condition=None):
         """  starts the command execution thread """
 
         # Check status flags before starting thread
@@ -416,21 +408,16 @@ class TaskManager:
         if self.failure_flag:
             self.logger.debug("TaskManager failure threshold exceeded, raising CommandExecutionError")
             self._cleanup_before_fail()
-            raise CommandExecutionError("TaskManager failure threshold exceeded", command_sequence)
-
-        browser.set_visit_id(self.next_visit_id)
-        self.sock.send(("INSERT INTO site_visits (visit_id, crawl_id, site_url) VALUES (?,?,?)",
-                        (self.next_visit_id, browser.crawl_id, command_sequence.url)))
-        self.next_visit_id += 1
+            raise CommandExecutionError("TaskManager failure threshold exceeded", command)
 
         # Start command execution thread
-        args = (browser, command_sequence, condition)
+        args = (browser, command, reset, condition)
         thread = threading.Thread(target=self._issue_command, args=args)
         browser.command_thread = thread
         thread.daemon = True
         thread.start()
 
-    def _issue_command(self, browser, command_sequence, condition=None):
+    def _issue_command(self, browser, command, reset, condition=None):
         """
         sends command tuple to the BrowserManager
         """
@@ -441,113 +428,86 @@ class TaskManager:
             with condition:
                 condition.wait()
 
-        reset = command_sequence.reset
-        start_time = None  # tracks when a site visit started, so that flash/profile
-                           # cookies can be properly tracked.
-        for command_and_timeout in command_sequence.commands_with_timeout:
-            command, timeout = command_and_timeout
-            if command[0] in ['GET', 'BROWSE']:
-                start_time = time.time()
-                command += (browser.curr_visit_id,)
-            elif command[0] in ['DUMP_FLASH_COOKIES', 'DUMP_PROFILE_COOKIES']:
-                command += (start_time, browser.curr_visit_id,)
-            browser.current_timeout = timeout
-            # passes off command and waits for a success (or failure signal)
-            browser.command_queue.put(command)
-            command_succeeded = 0 #1 success, 0 failure from error, -1 timeout
-            command_arguments = command[1] if len(command) > 1 else None
+        # passes off command and waits for a success (or failure signal)
+        browser.command_queue.put(command)
+        command_succeeded = 0 #1 success, 0 failure from error, -1 timeout
+        command_arguments = command[1] if len(command) > 1 else None
 
-            # received reply from BrowserManager, either success signal or failure notice
-            try:
-                status = browser.status_queue.get(True, browser.current_timeout)
-                if status == "OK":
-                    command_succeeded = 1
-                else:
-                    command_succeeded = 0
-                    self.logger.info("BROWSER %i: Received failure status while"
-                                     " executing command: %s" % (browser.crawl_id, command[0]))
-            except EmptyQueue:
-                command_succeeded = -1
-                self.logger.info("BROWSER %i: Timeout while executing command, "
-                                 "%s, killing browser manager" % (browser.crawl_id, command[0]))
-
-            self.sock.send(("INSERT INTO CrawlHistory (crawl_id, command, arguments, bool_success)"
-                            " VALUES (?,?,?,?)",
-                            (browser.crawl_id, command[0], command_arguments, command_succeeded)))
-
-            if command_succeeded != 1:
-                with self.threadlock:
-                    self.failurecount += 1
-                if self.failurecount > self.failure_limit:
-                    self.logger.critical("BROWSER %i: Command execution failure"
-                                         " pushes failure count above the allowable limit."
-                                         " Setting failure_flag." % browser.crawl_id)
-                    self.failure_flag = True
-                    return
-                browser.restart_required = True
+        # received reply from BrowserManager, either success signal or failure notice
+        try:
+            status = browser.status_queue.get(True, browser.current_timeout)
+            if type(status) == tuple and status[0] == 'CRITICAL':
+                self.logger.info("BROWSER %i: Received an exception while executing command: %s" % (browser.crawl_id, command[0]))
+                command_succeeded = 0
+                self.failure_flag = True
+                self._cleanup_before_fail()
+                reraise(*cPickle.loads(status[1]))
+            if status == "OK":
+                command_succeeded = 1
             else:
-                with self.threadlock:
-                    self.failurecount = 0
+                command_succeeded = 0
+                self.logger.info("BROWSER %i: Received failure status while executing command: %s" % (browser.crawl_id, command[0]))
+        except EmptyQueue:
+            command_succeeded = -1
+            self.logger.info("BROWSER %i: Timeout while executing command, %s, killing browser manager" % (browser.crawl_id, command[0]))
 
-            if browser.restart_required:
-                break
+        self.sock.send(("INSERT INTO CrawlHistory (crawl_id, command, arguments, bool_success)"
+                        " VALUES (?,?,?,?)",
+                        (browser.crawl_id, command[0], command_arguments, command_succeeded)))
 
         if self.closing:
             return
 
+        if command_succeeded != 1:
+            with self.threadlock:
+                self.failurecount += 1
+            if self.failurecount > self.failure_limit:
+                self.logger.critical("BROWSER %i: Command execution failure pushes failure count above the allowable limit. Setting failure_flag." % browser.crawl_id)
+                self.failure_flag = True
+                return
+            browser.restart_required = True
+        else:
+            with self.threadlock:
+                self.failurecount = 0
+
         if browser.restart_required or reset:
             success = browser.restart_browser_manager(clear_profile = reset)
             if not success:
-                self.logger.critical("BROWSER %i: Exceeded the maximum allowable "
-                                     "consecutive browser launch failures. "
-                                     "Setting failure_flag." % browser.crawl_id)
+                self.logger.critical("BROWSER %i: Exceeded the maximum allowable consecutive browser launch failures. Setting failure_flag." % browser.crawl_id)
                 self.failure_flag = True
                 return
             browser.restart_required = False
 
-    def execute_command_sequence(self, command_sequence, index=None):
-        self._distribute_command(command_sequence, index)
-
     # DEFINITIONS OF HIGH LEVEL COMMANDS
-    # NOTE: These wrappers are provided for convenience. To issue sequential
-    # commands to the same browser in a single 'visit', use the CommandSequence
-    # class directly.
 
-    def get(self, url, index=None, timeout=60, sleep=0, reset=False):
+    def get(self, url, sleep=0, index=None, timeout=60, reset=False):
         """ goes to a url """
-        command_sequence = CommandSequence.CommandSequence(url)
-        command_sequence.get(timeout=timeout, sleep=sleep)
-        command_sequence.reset = reset
-        self.execute_command_sequence(command_sequence, index=index)
+        self._distribute_command(('GET', url, sleep), index, timeout, reset)
 
     def browse(self, url, num_links=2, sleep=0, index=None, timeout=60, reset=False):
         """ browse a website and visit <num_links> links on the page """
-        command_sequence = CommandSequence.CommandSequence(url)
-        command_sequence.get(sleep=sleep, timeout=timeout)
-        command_sequence.reset = reset
-        self.execute_command_sequence(command_sequence, index=index)
+        self._distribute_command(('BROWSE', url, num_links, sleep), index, timeout, reset)
 
-    # def dump_flash_cookies(self, url, start_time, index=None, timeout=60):
-    #     """ dumps all Flash LSOs to db """
-    #     self._distribute_command(('DUMP_FLASH_COOKIES', url, start_time), index, timeout)
+    def dump_flash_cookies(self, url, start_time, index=None, timeout=60):
+        """ dumps all Flash LSOs to db """
+        self._distribute_command(('DUMP_FLASH_COOKIES', url, start_time), index, timeout)
 
-    # def dump_profile_cookies(self, url, start_time, index=None, timeout=60):
-    #     """ dumps changes to Firefox's cookies.sqlite to db """
-    #     self._distribute_command(('DUMP_PROFILE_COOKIES', url, start_time), index, timeout)
+    def dump_profile_cookies(self, url, start_time, index=None, timeout=60):
+        """ dumps changes to Firefox's cookies.sqlite to db """
+        self._distribute_command(('DUMP_PROFILE_COOKIES', url, start_time), index, timeout)
 
-    # def dump_profile(self, dump_folder, close_webdriver=False, compress=True, index=None, timeout=120):
-    #     """ dumps from the profile path to a given file (absolute path) """
-    #     self._distribute_command(('DUMP_PROF', dump_folder, close_webdriver, compress), index, timeout)
+    def dump_profile(self, dump_folder, close_webdriver=False, compress=True, index=None, timeout=120):
+        """ dumps from the profile path to a given file (absolute path) """
+        self._distribute_command(('DUMP_PROF', dump_folder, close_webdriver, compress), index, timeout)
 
-    # def extract_links(self, index=None, timeout=30):
-    #     self._distribute_command(('EXTRACT_LINKS',), index, timeout)
+    def extract_links(self, index=None, timeout=30):
+        self._distribute_command(('EXTRACT_LINKS',), index, timeout)
     
     def sign_in(self,index = None, overwrite_timeout = None, reset=False):
         self._distribute_command(('SIGN_IN'), index, overwrite_timeout,reset)
 
     def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
         self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
-
 
     def close(self, post_process=True):
         """
@@ -560,3 +520,4 @@ class TaskManager:
         self._shutdown_manager()
         if post_process:
             post_processing.run(self.manager_params) # launch post-crawl processing
+

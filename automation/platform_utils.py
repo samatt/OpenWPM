@@ -8,11 +8,12 @@ import subprocess
 import shutil
 import json
 import time
+import sys
 import os
 
 def get_version():
     """Return OpenWPM version tag/current commit and Firefox version """
-    openwpm = subprocess.check_output(["git","describe","--tags","--always"]).strip()
+    openwpm = subprocess.check_output(["git","describe","--tags"]).strip()
 
     ff_ini = os.path.join(os.path.dirname(__file__), '../firefox-bin/application.ini')
     with open(ff_ini, 'r') as f:

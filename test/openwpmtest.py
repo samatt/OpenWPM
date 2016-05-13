@@ -13,7 +13,8 @@ class OpenWPMTest(object):
         manager = TaskManager.TaskManager(manager_params, browser_params)
         if not page_url.startswith("http"):
             page_url = utilities.BASE_TEST_URL + page_url
-        manager.get(url=page_url, sleep=sleep_after)
+        manager.get(page_url)
+        sleep(sleep_after)
         manager.close(post_process)
         return manager_params['db']
 
