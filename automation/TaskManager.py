@@ -25,15 +25,14 @@ def load_product_urls():
     path = os.path.join(os.path.dirname(__file__) ,'../product-urls')
     files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../product-urls'))
     urls = {}
-
     for fp in files:
         category = fp.split(".")[0]
         urls[category] = []
         with open(path+"/"+fp) as data_file:    
             data = json.load(data_file)
             urls[category] = data.values()
-
     return urls
+
 def load_amazon_params(num_browsers=1):
     files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../browser_settings'))
     # print files
@@ -44,10 +43,11 @@ def load_amazon_params(num_browsers=1):
             fp = open(os.path.join(os.path.dirname(__file__), '../browser_settings/%s'%f))
             print fp
             preferences = json.load(fp)
-            
+
             # deepcopy is temporary
             browser_params.append(preferences)
             fp.close()
+
     fp = open(os.path.join(os.path.dirname(__file__), 'default_manager_params.json'))
     manager_params = json.load(fp)
     fp.close()
@@ -350,6 +350,7 @@ class TaskManager:
         = *     -> sends command to all browsers
         = **    -> sends command to all browsers (synchronized)
         """
+
         if index is None:
             #send to first browser available
             command_executed = False
@@ -400,7 +401,7 @@ class TaskManager:
 
     def _start_thread(self, browser, command, reset, condition=None):
         """  starts the command execution thread """
-
+        # print command
         # Check status flags before starting thread
         if self.closing:
             self.logger.error("Attempted to execute command on a closed TaskManager")
@@ -412,6 +413,7 @@ class TaskManager:
 
         # Start command execution thread
         args = (browser, command, reset, condition)
+        
         thread = threading.Thread(target=self._issue_command, args=args)
         browser.command_thread = thread
         thread.daemon = True
@@ -429,6 +431,7 @@ class TaskManager:
                 condition.wait()
 
         # passes off command and waits for a success (or failure signal)
+
         browser.command_queue.put(command)
         command_succeeded = 0 #1 success, 0 failure from error, -1 timeout
         command_arguments = command[1] if len(command) > 1 else None
@@ -504,7 +507,7 @@ class TaskManager:
         self._distribute_command(('EXTRACT_LINKS',), index, timeout)
     
     def sign_in(self,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('SIGN_IN'), index, overwrite_timeout,reset)
+        self._distribute_command(('SIGN_IN',), index, overwrite_timeout,reset)
 
     def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
         self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
