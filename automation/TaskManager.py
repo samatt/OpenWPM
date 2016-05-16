@@ -35,14 +35,20 @@ def load_product_urls():
 
     return urls
 def load_amazon_params(num_browsers=1):
+    
+    test_fp = os.path.join(os.path.dirname(__file__), '../browser_settings/jeff.json')
+    # test_fp = os.path.join(os.path.dirname(__file__), '../browser_settings/mike.json')
     files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../browser_settings'))
     # print files
     browser_params = []
     for f in files[:1]:
         if '.DS_Store' not in f:
-
-            fp = open(os.path.join(os.path.dirname(__file__), '../browser_settings/%s'%f))
-            print fp
+            if not test_fp:
+                fp = open(os.path.join(os.path.dirname(__file__), '../browser_settings/%s'%f))
+            else:
+                print 'using test user: ', test_fp
+                fp = open(test_fp)
+            
             preferences = json.load(fp)
             
             # deepcopy is temporary
@@ -504,10 +510,15 @@ class TaskManager:
         self._distribute_command(('EXTRACT_LINKS',), index, timeout)
     
     def sign_in(self,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('SIGN_IN'), index, overwrite_timeout,reset)
+        self._distribute_command(('SIGN_IN',), index, overwrite_timeout,reset)
 
     def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
         self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
+    
+    def get_checkout_price(self, url,item,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('GET_CHECKOUT',url,item), index, overwrite_timeout,reset)
+    def delete_cart(self,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('DELETE_CART',), index, overwrite_timeout,reset)
 
     def close(self, post_process=True):
         """

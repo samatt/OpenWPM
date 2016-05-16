@@ -1,17 +1,16 @@
 # import MPLogger
+import sys,os,json,time
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.by import By
 from ProductData import ProductData
 from datetime import datetime
 from pprint import pprint
-import time
 from  collections import namedtuple
-import sys,os
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-PriceRecord = namedtuple('PriceRecord',['page','vendor_index','vendor', 'price',  'condition', 'delivery','shipping','cart_button'])
+PriceRecord = namedtuple('PriceRecord',['page','vendor_index','vendor', 'price',  'condition', 'delivery','shipping','scraped'])
 
 selectors = {
 	'title': '[data-feature-name="title"]',
@@ -37,7 +36,6 @@ class AmazonRunner:
 		self.product_data['url'] = _url
 		self.parsed_rows = []
 		self.isMobile = False if self.browser_params['ua'] == "Mac" else True
-		# self.webdriver.implicitly_wait(20)
 		self.current_index = 0
 
 	def get_els(self,selector,fn=None):
@@ -55,6 +53,7 @@ class AmazonRunner:
 		self.product_data['name'] = self.webdriver.find_element(By.CSS_SELECTOR,selectors['title']).text
 
 	def nav_to_offers(self):
+		print 'nav to offers'
 		if self.isMobile:
 			els = self.get_els(selectors['new_offers_link_mobile'], lambda x: 'new' or 'New' in x.text)
 		else:
@@ -73,17 +72,19 @@ class AmazonRunner:
 		# 		self.webdriver.find_element(By.CSS_SELECTOR,"li#olpTabNew").click()
 		# 		time.sleep(2)
 		self.product_data['time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+		
 		while not self.webdriver.find_elements(By.CSS_SELECTOR,selectors['next_button_disabled']):
 			try:
 				page = self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text
 				print 'current page: ',page
 				self.parsed_rows += self.get_offer_details(page)
 				self.webdriver.find_element(By.CSS_SELECTOR,selectors['next_button']).click()
-				time.sleep(4)
+				time.sleep(2)
+				print 'going to the next page'
 			except Exception, e:
 				print  e
 
+		print 'last page'
 		page = self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text
 		self.parsed_rows += self.get_offer_details(page)
 		return self.parsed_rows
@@ -125,7 +126,7 @@ class AmazonRunner:
 
 			pd = []
 			for i in xrange(len(prices)):
-				p = PriceRecord(page,index[i],vendors[i],prices[i],conditions[i],deliveries[i],shipping[i],buttons[i])
+				p = PriceRecord(page,index[i],vendors[i],prices[i],conditions[i],deliveries[i],shipping[i],False)
 				pd.append(p)
 			return pd
 		except Exception, e:
@@ -137,10 +138,23 @@ class AmazonRunner:
 
 	def get_products_for_check_out(self,pd):
 		it = []
+		o = []
 		for p in pd:
 			if 'free shipping on eligible orders' in p.shipping.lower():
-				it.append(p)
-		return it
+				i = {}
+				i['page'] = p.page
+				i['vendor_index'] = p.vendor_index
+				i['vendor'] = p.vendor
+				i['scraped'] = p.scraped
+				it.append(i)
+			else:
+				o.append(p)
+
+		with open('../price_index.json', 'w') as fp:
+			print 'saving data to file'
+			data = {'url':self.product_data['url'],'items':it}
+			json.dump(data, fp,indent=2 )
+		return o
 
 	def get_price(self):
 		els = self.get_els(selectors['prices'])
@@ -167,82 +181,99 @@ class AmazonRunner:
 		return  zip(*buttons)
 
 
+	def go_to_page(self,item):
+		# not self.webdriver.find_elements(By.CSS_SELECTOR,selectors['next_button_disabled']):
+		while self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text.strip() != item['page']:
+			try:
+				page = self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text
+				print 'current page: ',page
+				self.webdriver.find_element(By.CSS_SELECTOR,selectors['next_button']).click()
+				time.sleep(2)
+				print 'going to the next page'
+			except Exception, e:
+				print  e
 
-	def get_add_to_cart(self):
+		print 'Done! At page: ',self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text
+
+	def get_shipping_cart(self,item):
+		print 'in get shipping cart'
+		data =False
 		try:
-				el = self.webdriver.find_elements(By.CSS_SELECTOR,"form.a-spacing-none")[0]
-				#this gets the index from the post url. Most consistent way I can think of for keeping track of the index
-				# self.webdriver.implicitly_wait(20)
+			for el in self.webdriver.find_elements(By.CSS_SELECTOR,"form.a-spacing-none"):
+				el_index = el.get_attribute('action').split('_')[-1]
+				cur_page = self.webdriver.find_element(By.CSS_SELECTOR,'li.a-selected').text
+				
+				print 'target: ',item['vendor_index'],item['page']
+				print 'current: ',el_index,cur_page
+				
+				if item['vendor_index'] == el_index and item['page'] == cur_page:
+					print 'correct vendor'
+					print 'correct page'
+					data = self.get_add_to_cart(el)
+					break
 
+			if data:
+				print 'should have got price'
+				data['vendor_index'] = item['vendor_index']
+				return data
+			else:
+				print 'didnt get price'
+				return False
+			
+		except Exception, e:
+			print e
+			return False
+
+
+	def get_add_to_cart(self,el):
+		data = {}
+		print 'get_add_to_cart' 
+		try:
+				self.webdriver.save_screenshot('test.png') 	
+
+				self.webdriver.implicitly_wait(30)
 				el_index = el.get_attribute('action')[-1]
 				print 'element index :',el_index
+				self.webdriver.save_screenshot('test.png') 	
+
 				button = el.find_elements(By.CSS_SELECTOR,'[name="submit.addToCart"]')[0]
 				button.click()
-
+				
+				time.sleep(2)	
+				
 				cart = self.webdriver.find_element(By.CSS_SELECTOR,'a#hlb-ptc-btn-native')
+				print cart.text
 				cart.click()
-
-				self.re_sign_in()
+				
+				time.sleep(2)	
+				
+				# self.re_sign_in()br
 				
 				ship_to = self.webdriver.find_elements(By.CSS_SELECTOR,'a.a-declarative.a-button-text ')[0]
 				ship_to.click()
 				print 'ship to'
-				# shipping_continue = self.webdriver.find_elements(By.CSS_SELECTOR,'[value="Continue"]')[0]
-				# shipping_continue.click()
-				
-				wait = WebDriverWait(self.webdriver, 20)
-				element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,'[value="Continue"]')))
-				element.click()
-				
+
+				shipping_continue = self.webdriver.find_elements(By.CSS_SELECTOR,'[value="Continue"]')[0]
+				shipping_continue.click()
+				time.sleep(2)	
 				print 'shipping continue'
-				
-				# if not  self.webdriver.find_elements(By.CSS_SELECTOR,'input.a-button-input.a-button-text'):
-				# 	print 'no elements'
-				# 	self.webdriver.save_screenshot('test.png') 	
-				# 	continue
-				# card_continue = self.webdriver.find_elements(By.CSS_SELECTOR,'input.a-button-input.a-button-text')[0]
-				# card_continue.click()	
-				wait = WebDriverWait(self.webdriver, 20)
-				element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,'input.a-button-input.a-button-text')))
-				element.click()
+
+				self.webdriver.save_screenshot('test.png') 	
+				time.sleep(2)
+				card_continue = self.webdriver.find_elements(By.CSS_SELECTOR,'input.a-button-input.a-button-text')[0]
+				card_continue.click()	
 				print 'card continue'
 
 
 				table_div = self.webdriver.find_element(By.CSS_SELECTOR,'div#subtotals-marketplace-table')
 				table = table_div.find_elements(By.CSS_SELECTOR,'table')
-
+				price_data = [] 
 				for row in table:
 					for r in row.find_elements_by_tag_name("td"):
 						print r.text
-
-				# a[href="https://www.amazon.com/ref=ox_spc_footer_homepage"]
-				homepage = self.webdriver.find_elements(By.CSS_SELECTOR,'#footer > div.a-color-secondary.a-size-mini > p > a:nth-child(4)')[0]
-				
-				print 'going to homepage page'
-				
-				homepage.click()
-				
-				time.sleep(4)
-				# self.webdriver.save_screenshot('test.png')
-				# #nav-flyout-ewc > div.nav-flyout-head.nav-tools.nav-sprite > a > span.nav-cart-icon.nav-sprite
-				cart = self.webdriver.find_elements(By.CSS_SELECTOR,'span.nav-cart-icon.nav-sprite')[0]
-				cart.click()
-				time.sleep(4)
-				self.webdriver.save_screenshot('test1.png')
-				print 'should be at delete page'
-				
-				delete = self.webdriver.find_elements(By.CSS_SELECTOR,'input[value="Delete"]')[0]
-				print'attribute',self.webdriver.find_elements(By.CSS_SELECTOR,'input[value="Delete"]')[0].get_attribute('aria-label')
-
-				wait = WebDriverWait(self.webdriver, 20)
-				element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,'input[value="Delete"]')))
-				
-				element.click()
-
-				# time.sleep(15)
-				self.webdriver.save_screenshot('test3.png')
-				webdriver.get(self.product_data['url'])
-				self.get_offer_details()
+						price_data.append(r.text)
+				data['prices'] = price_data
+				return data
 				
 				# break
 		except Exception, e:
@@ -252,13 +283,28 @@ class AmazonRunner:
 				fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
 				print(exc_type, fname, exc_tb.tb_lineno)
 				print e
+				return False
 
 			
 		print 'Done moving on'	
 			# self.webdriver.save_screenshot('test.png') 
 			# self.webdriver.find_element(By.CSS_SELECTOR,'#nav-cart-count').click()
 			
-
+	def delete_cart(self):
+		if int(self.webdriver.find_elements(By.CSS_SELECTOR,'span#nav-cart-count')[0].text) == 0:
+			print 'no items in cart!'
+		else:
+			cart = self.webdriver.find_elements(By.CSS_SELECTOR,'span.nav-cart-icon.nav-sprite')[0]
+			cart.click()
+			time.sleep(2)
+			self.webdriver.save_screenshot('test.png')
+			print 'should be at delete page'
+			
+			for delete in self.webdriver.find_elements(By.CSS_SELECTOR,'input[value="Delete"]'):
+				print'attribute',delete.get_attribute('aria-label')
+				delete.click()
+				time.sleep(2)
+			self.webdriver.save_screenshot('test.png')
 	def get_vendors(self):
 		v = []
 		for i, el in enumerate(self.webdriver.find_elements(By.CSS_SELECTOR,selectors['vendor_name'])):
@@ -270,9 +316,12 @@ class AmazonRunner:
 		return v
 
 	def re_sign_in(self):
-	    user = self.browser_params["creds_user"]
-	    password = self.browser_params["creds_password"]
-	    email = self.webdriver.find_element(By.CSS_SELECTOR, "input#ap_email").send_keys(user)
-	    password = self.webdriver.find_element(By.CSS_SELECTOR, "input#ap_password").send_keys(password)
-	    self.webdriver.find_element_by_id("signInSubmit").click()
-	    print ("Signed in with %s"%user)
+		if self.webdriver.find_elements(By.CSS_SELECTOR, "input#ap_email"):
+		    user = self.browser_params["creds_user"]
+		    password = self.browser_params["creds_password"]
+		    email = self.webdriver.find_element(By.CSS_SELECTOR, "input#ap_email").send_keys(user)
+		    password = self.webdriver.find_element(By.CSS_SELECTOR, "input#ap_password").send_keys(password)
+		    self.webdriver.find_element_by_id("signInSubmit").click()
+		    print ("Signed in with %s"%user)
+		else:
+			print 'no user form'

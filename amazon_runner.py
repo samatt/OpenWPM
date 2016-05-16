@@ -2,7 +2,7 @@ from automation import TaskManager
 import time
 import os
 from pprint import pprint 
-
+import json
 
 # The list of sites that we wish to crawl
 files = os.listdir(os.path.join(os.path.dirname(__file__) ,'browser_settings'))
@@ -31,11 +31,18 @@ for i in xrange(NUM_BROWSERS):
 manager = TaskManager.TaskManager(manager_params, browser_params, NUM_BROWSERS)
 
 manager.sign_in()
-
-for cat,urls in product_urls.iteritems():
-	for url in urls:
-		manager.get_prices(url,cat)
-		time.sleep(2)
+manager.delete_cart()
+# for cat,urls in product_urls.iteritems():
+	# for url in urls:
+		# manager.get_prices(url,cat)
+		# time.sleep(2)
+		
+		# fp = open(os.path.join(os.path.dirname(__file__), 'price_index.json'))
+		# for_check_out = json.load(fp)
+		# for i in for_check_out['items']:
+		# 	if not i['scraped']:
+		# 		print 'getting prices for : ', i
+		# 		manager.get_checkout_price(url,i)
 
 # Shuts down the browsers and waits for the data to finish logging
 manager.close()

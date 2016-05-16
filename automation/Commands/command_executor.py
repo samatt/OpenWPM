@@ -39,3 +39,8 @@ def execute_command(command, webdriver, proxy_queue, browser_settings, browser_p
     
     if command[0] == 'GET_PRICES':
         browser_commands.amazon_get_prices(command[1], command[2], webdriver, proxy_queue,manager_params, browser_params)
+
+    if command[0] == 'GET_CHECKOUT':
+        browser_commands.amazon_get_checkout_price(command[1], command[2], webdriver, proxy_queue,manager_params, browser_params)
+    if command[0] == 'DELETE_CART':
+        browser_commands.amazon_delete_cart( webdriver, manager_params, browser_params)
