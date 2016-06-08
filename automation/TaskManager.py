@@ -21,19 +21,34 @@ import psutil
 SLEEP_CONS = 0.1  # command sleep constant (in seconds)
 BROWSER_MEMORY_LIMIT = 1500 # in MB
 
-def load_product_urls():
-    path = os.path.join(os.path.dirname(__file__) ,'../product-urls')
-    files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../product-urls'))
-    urls = {}
+def load_products():
+    infile = os.path.join(os.path.dirname(__file__) ,'../product-urls/Products.json')
+    # files =  os.listdir(os.path.join(os.path.dirname(__file__) ,'../product-urls'))
+    product_to_scrape = {}
+    with open(infile) as input_data:    
+        product_to_scrape = json.load(input_data)
 
-    for fp in files:
-        category = fp.split(".")[0]
-        urls[category] = []
-        with open(path+"/"+fp) as data_file:    
-            data = json.load(data_file)
-            urls[category] = data.values()
 
-    return urls
+    """Create output files if they dont exist"""
+    prices_folder = os.path.join(os.path.dirname(__file__) ,'../product-prices')
+    output = []
+    for name,url in product_to_scrape.iteritems():
+        fp = ("{}.json").format(os.path.join(prices_folder,name))
+
+        if not os.path.exists(fp):
+            print 'File does not exist',name
+            with open(fp,'w') as outfile:
+                data = {'url':url,'items':[],"has_vendors_list":False,'first_time':True}
+                json.dump(data,outfile)
+                output.append((name,url,data))
+        else:
+            print 'File does exist',name
+            price_file = open(fp)
+            data = json.load(price_file)
+            output.append((name,url,data))
+
+    return output
+
 def load_amazon_params(num_browsers=1):
     
     test_fp = os.path.join(os.path.dirname(__file__), '../browser_settings/jeff.json')
@@ -512,13 +527,14 @@ class TaskManager:
     def sign_in(self,index = None, overwrite_timeout = None, reset=False):
         self._distribute_command(('SIGN_IN',), index, overwrite_timeout,reset)
 
-    def get_prices(self, url,category,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('GET_PRICES',url,category), index, overwrite_timeout,reset)
-    
-    def get_checkout_price(self, url,item,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('GET_CHECKOUT',url,item), index, overwrite_timeout,reset)
-    def delete_cart(self,index = None, overwrite_timeout = None, reset=False):
-        self._distribute_command(('DELETE_CART',), index, overwrite_timeout,reset)
+    def get_prices(self, url,name,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('GET_PRICES',url,name), index, overwrite_timeout,reset)
+
+    def get_checkout_price(self, name,url,item,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('GET_CHECKOUT',url,name,item), index, overwrite_timeout,reset)
+
+    def delete_cart(self,name,index = None, overwrite_timeout = None, reset=False):
+        self._distribute_command(('DELETE_CART',name), index, overwrite_timeout,reset)
 
     def close(self, post_process=True):
         """

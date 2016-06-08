@@ -39,26 +39,30 @@ def amazon_signin(webdriver, proxy_queue, browser_params):
     
     #sign in
     # def get_website(url, sleep, webdriver, proxy_queue, browser_params, extension_socket):
+    print "I AM IN SIGN IN"
+    
     get_website(sign_in_url,2, webdriver, proxy_queue, browser_params,None)
+    
     email = webdriver.find_element(By.CSS_SELECTOR, "#ap_email").send_keys(user)
     password = webdriver.find_element(By.CSS_SELECTOR, "#ap_password").send_keys(password)
+
     webdriver.find_element_by_id("signInSubmit").click()
     print ("Signed in with %s"%user)
 
 
-def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browser_params):    
+def amazon_get_prices(url,name,webdriver, proxy_queue, manager_params,browser_params):    
     # for debug
     # url = "http://www.amazon.com/Apple-iPhone-8GB-Black-Verizon/dp/B0074R0Z3O/ref=sr_1_cc_1?s=aps&ie=UTF8&qid=1429812402&sr=1-1-catcorr&keywords=Apple+iPhone+4+8GB+%28Black%29+-+Verizon" 
+    print 'I AM HERE'
     product_data = {}
     try:
         get_website(url, 3,webdriver, proxy_queue, browser_params,None)
-        amazon = AmazonRunner(webdriver, url, manager_params, browser_params )
+        amazon = AmazonRunner(webdriver, name,url, manager_params, browser_params )
         amazon.get_product_name()
         print amazon.product_data['name']
         if amazon.nav_to_offers():
             print 'Navigated to offers'
             offers = amazon.get_all_offers()
-
             for_check_out = amazon.get_products_for_check_out(offers)
             to_save =  set(offers) - set(for_check_out)
             print len(offers),len(for_check_out),len(to_save)
@@ -73,11 +77,11 @@ def amazon_get_prices(url,category,webdriver, proxy_queue, manager_params,browse
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             print(exc_type, fname, exc_tb.tb_lineno)
         print e
-def amazon_get_checkout_price(url,item,webdriver,proxy_queue,manager_params,browser_params):
+def amazon_get_checkout_price(url,name,item,webdriver,proxy_queue,manager_params,browser_params):
     print item
     get_website(url, 3,webdriver, proxy_queue, browser_params,None)
     # webdriver.save_screenshot('new_test.png')  
-    amazon = AmazonRunner(webdriver, url, manager_params, browser_params )
+    amazon = AmazonRunner(webdriver,name,url, manager_params, browser_params )
     time.sleep(2)
     amazon.get_product_name()
     print amazon.product_data['name']
@@ -86,26 +90,35 @@ def amazon_get_checkout_price(url,item,webdriver,proxy_queue,manager_params,brow
         print 'Navigated to offers'
         amazon.go_to_page(item)
         data = amazon.get_shipping_cart(item)
-
+        fp = os.path.join(os.path.dirname(__file__), '../../product-prices/{}.json'.format(name))
         if data:
-            print 'got new data',data
+            print 'got new data!!'
             fdata =[]
-            with open(os.path.join(os.path.dirname(__file__), '../../price_index.json'),'r') as infile:
+            with open(fp,'r') as infile:
                 fdata = json.load(infile)
                 for i in fdata['items']:
                     if i['vendor_index'] == data['vendor_index']:
                         i['scraped'] = True
                         i['price_items'] = data['prices']
             print fdata
-            with open(os.path.join(os.path.dirname(__file__), '../../price_index.json'), 'w') as outfile:
+            with open(fp, 'w') as outfile:
                         json.dump(fdata, outfile,indent=2 )
 
         else:
-            print 'didnt get any data'
+            print 'nothing'
+            # fdata = {}
+            # with open(fp,'r') as infile:
+            #     fdata = json.load(infile)
+            #     if fdata['first_time']:
+            #         fdata['first_time'] = False
+            #         print 'Doesnt have vendors, not first time'
+            #     with open(self.prices_fp, 'w') as fp:
+            #         json.dump(fdata, outfile,indent=2 )
 
-def amazon_delete_cart(webdriver,manager_params,browser_params):
+def amazon_delete_cart(name,webdriver,manager_params,browser_params):
+    print "I AM IN DELETE CART"
     get_website('https://www.amazon.com/', 3,webdriver, None, browser_params,None)
-    amazon = AmazonRunner(webdriver, 'https://www.amazon.com/', manager_params, browser_params )
+    amazon = AmazonRunner(webdriver, name,'https://www.amazon.com/', manager_params, browser_params )
     amazon.delete_cart()
     
 

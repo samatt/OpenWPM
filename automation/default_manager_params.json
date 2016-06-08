@@ -2,6 +2,7 @@
     "data_directory": "~/OpenWPM/",
     "log_directory": "~/OpenWPM/",
     "database_name": "crawl-data.sqlite",
+    "screenshot-folder":"~/OpenWPM/product-screenshots",
     "log_file": "openwpm.log",
     "failure_limit": null
 }

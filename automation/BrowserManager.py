@@ -95,6 +95,7 @@ class Browser:
 
         def check_queue(launch_status):
             result = self.status_queue.get(True, self._SPAWN_TIMEOUT)
+
             if result[0] == 'STATUS':
                 launch_status[result[1]] = True
                 return result[2]
@@ -284,6 +285,7 @@ def BrowserManager(command_queue, status_queue, browser_params, manager_params, 
 
             # reads in the command tuple of form (command, arg0, arg1, arg2, ..., argN) where N is variable
             command = command_queue.get()
+
             logger.info("BROWSER %i: EXECUTING COMMAND: %s" % (browser_params['crawl_id'], str(command)))
             # attempts to perform an action and return an OK signal
             # if command fails for whatever reason, tell the TaskMaster to kill and restart its worker processes
